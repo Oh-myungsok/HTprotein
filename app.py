@@ -2,8 +2,9 @@ import streamlit as st
 from Bio import SeqIO
 import pandas as pd
 import os
+from io import BytesIO
 
-# FASTA 파일 경로 (app.py와 같은 위치에 있어야 함)
+# FASTA 파일 경로
 FASTA_FILE = "d1_fasta_clean.fasta"
 
 # 아미노산 분자량 대략값
@@ -16,15 +17,17 @@ aa_weights = {
 }
 
 def calc_mw(seq):
-    return sum(aa_weights.get(aa, 0) for aa in seq)
+    total = sum(aa_weights.get(aa, 0) for aa in seq)
+    water_loss = (len(seq) - 1) * 18.0 if len(seq) > 1 else 0
+    return total - water_loss
 
 # Streamlit UI
 st.title("HotProtein Search App 🔬")
 st.write("FASTA 파일에서 단백질을 검색합니다.")
 
 # 사용자 입력
-min_mw = st.number_input("최소 분자량", value=10000.0)
-max_mw = st.number_input("최대 분자량", value=50000.0)
+min_mw = st.number_input("최소 분자량 (Da)", value=10000.0)
+max_mw = st.number_input("최대 분자량 (Da)", value=50000.0)
 keyword = st.text_input("검색 키워드").lower()
 
 if st.button("검색 실행"):
@@ -37,14 +40,24 @@ if st.button("검색 실행"):
                 mw = calc_mw(str(record.seq))
                 if min_mw <= mw <= max_mw:
                     if keyword in record.description.lower():
-                        results.append((record.id, mw, str(record.seq)[:50] + "..."))
+                        results.append((record.id, round(mw, 2), str(record.seq)[:50] + "..."))
         except Exception as e:
             st.error(f"FASTA 파일을 읽는 중 오류 발생: {e}")
 
         if results:
             st.subheader("검색 결과")
             st.write("총 결과 수:", len(results))
-            df = pd.DataFrame(results, columns=["ID", "분자량", "서열(앞 50aa)"])
+            df = pd.DataFrame(results, columns=["ID", "분자량(Da)", "서열(앞 50aa)"])
             st.dataframe(df)
+
+            # 📥 CSV 다운로드 버튼 추가
+            csv_data = df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 CSV 파일로 저장",
+                data=csv_data,
+                file_name="search_results.csv",
+                mime="text/csv"
+            )
+
         else:
             st.warning("조건에 맞는 단백질이 없습니다.")
